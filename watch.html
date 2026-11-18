@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0F17">
+<title>Uncle Safe — Watch</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    background:#0B0F17;
+    color:#E5E7EB;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  /* ---------- Access gate ---------- */
+  #gate {
+    min-height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .gate-card {
+    width:100%;
+    max-width:340px;
+    background:rgba(23,23,23,0.6);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px;
+    padding:28px 24px;
+    text-align:center;
+  }
+  .gate-card h1 { font-size:20px; font-weight:600; letter-spacing:-0.02em; color:#F9FAFB; }
+  .gate-card p { margin-top:8px; font-size:14px; color:#9CA3AF; }
+  #gateInput {
+    width:100%;
+    min-height:48px;
+    margin-top:20px;
+    padding:12px 14px;
+    font-size:16px;
+    background:#0B0F17;
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:10px;
+    color:#F9FAFB;
+    outline:none;
+  }
+  #gateInput:focus { border-color:#10B981; }
+  #unlockBtn {
+    width:100%;
+    min-height:48px;
+    margin-top:12px;
+    font-size:16px;
+    font-weight:600;
+    border:none;
+    border-radius:10px;
+    background:#10B981;
+    color:#052E22;
+    cursor:pointer;
+    transition:transform .08s ease, filter .15s ease;
+  }
+  #unlockBtn:active { transform:scale(0.97); filter:brightness(0.92); }
+  #gateError { display:none; margin-top:14px; font-size:14px; color:#FCA5A5; }
+
+  /* ---------- App ---------- */
+  #app { display:none; height:100vh; height:100dvh; flex-direction:column; }
+  header {
+    flex:none;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    padding:12px 14px;
+    background:rgba(11,15,23,0.92);
+    border-bottom:1px solid rgba(255,255,255,0.08);
+    z-index:1000;
+  }
+  header h1 { font-size:16px; font-weight:600; letter-spacing:-0.01em; color:#F9FAFB; }
+  .pill {
+    font-size:13px;
+    padding:5px 10px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04);
+    color:#9CA3AF;
+    white-space:nowrap;
+  }
+  .pill.inside { color:#6EE7B7; border-color:rgba(16,185,129,0.35); background:rgba(16,185,129,0.10); }
+  .pill.outside { color:#FCA5A5; border-color:rgba(239,68,68,0.35); background:rgba(239,68,68,0.12); }
+  .pill.stale { color:#FCD34D; border-color:rgba(245,158,11,0.35); background:rgba(245,158,11,0.10); }
+  .pill.waiting { color:#9CA3AF; }
+  .spacer { flex:1; }
+  #mapWrap { position:relative; flex:1; min-height:0; }
+  #map { position:absolute; inset:0; background:#0B0F17; }
+
+  #tint {
+    position:absolute; inset:0;
+    pointer-events:none;
+    background:rgba(239,68,68,0.10);
+    opacity:0;
+    transition:opacity .6s ease;
+    z-index:500;
+  }
+  #tint.on { opacity:1; }
+
+  #banner {
+    display:none;
+    position:absolute;
+    left:12px; right:12px;
+    bottom:14px;
+    z-index:900;
+    padding:12px 16px;
+    border-radius:12px;
+    background:rgba(127,29,29,0.92);
+    border:1px solid rgba(239,68,68,0.4);
+    color:#FEE2E2;
+    font-size:14px;
+    line-height:1.45;
+    box-shadow:0 6px 24px rgba(0,0,0,0.5);
+  }
+  #banner b { color:#fff; }
+
+  /* Setup panel */
+  #setup {
+    display:none;
+    position:absolute;
+    left:12px; right:12px;
+    bottom:14px;
+    z-index:900;
+    background:rgba(23,23,23,0.85);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px;
+    padding:16px;
+    backdrop-filter:blur(6px);
+  }
+  #setup h2 { font-size:15px; font-weight:600; letter-spacing:-0.01em; color:#F9FAFB; }
+  #setup p { margin-top:6px; font-size:13px; color:#9CA3AF; line-height:1.45; }
+  #radiusSlider { width:100%; margin-top:14px; accent-color:#10B981; min-height:48px; }
+  #radiusLabel { font-size:13px; color:#D1D5DB; margin-top:2px; }
+  #saveHomeBtn {
+    width:100%;
+    min-height:48px;
+    margin-top:12px;
+    font-size:15px;
+    font-weight:600;
+    border:none;
+    border-radius:10px;
+    background:#10B981;
+    color:#052E22;
+    cursor:pointer;
+    transition:transform .08s ease, filter .15s ease;
+  }
+  #saveHomeBtn:active { transform:scale(0.97); filter:brightness(0.92); }
+  #saveHomeBtn[disabled] { opacity:0.5; cursor:default; }
+
+  /* Skeleton */
+  #skeleton {
+    display:none;
+    position:absolute; inset:0;
+    z-index:800;
+    background:#0B0F17;
+    padding:16px;
+  }
+  .sk {
+    border-radius:10px;
+    background:linear-gradient(100deg, #141a24 40%, #1c2430 50%, #141a24 60%);
+    background-size:200% 100%;
+    animation:shimmer 1.4s infinite linear;
+  }
+  @keyframes shimmer { to { background-position:-200% 0; } }
+  #skHeader { height:22px; width:180px; }
+  #skPill { height:24px; width:140px; margin-top:12px; }
+  #skMap { position:absolute; left:16px; right:16px; top:110px; bottom:16px; border-radius:14px; }
+
+  /* Error box */
+  #errBox {
+    display:none;
+    position:absolute;
+    left:12px; right:12px;
+    bottom:14px;
+    z-index:950;
+    background:rgba(23,23,23,0.9);
+    border:1px solid rgba(245,158,11,0.4);
+    border-radius:12px;
+    padding:14px 16px;
+    color:#FDE68A;
+    font-size:14px;
+    line-height:1.45;
+  }
+  #reloadBtn {
+    display:block;
+    min-height:48px;
+    width:100%;
+    margin-top:12px;
+    font-size:15px;
+    font-weight:600;
+    border:none;
+    border-radius:10px;
+    background:#1F2937;
+    color:#F9FAFB;
+    cursor:pointer;
+    transition:transform .08s ease;
+  }
+  #reloadBtn:active { transform:scale(0.97); }
+
+  /* Leaflet control tweaks for dark theme */
+  .leaflet-container { font-family:inherit; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gate-card">
+    <h1>Private family page</h1>
+    <p>Enter your family key to continue</p>
+    <input id="gateInput" type="password" inputmode="text" autocomplete="off" placeholder="Family key">
+    <button id="unlockBtn" type="button">Unlock</button>
+    <p id="gateError">That key doesn't match</p>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <h1>Uncle Safe</h1>
+    <span class="pill waiting" id="statusPill">loading…</span>
+    <span class="spacer"></span>
+    <span class="pill waiting mono" id="lastSeen">waiting for first signal</span>
+  </header>
+  <div id="mapWrap">
+    <div id="map"></div>
+    <div id="tint"></div>
+    <div id="banner"></div>
+
+    <div id="setup">
+      <h2>Set up home point</h2>
+      <p>Tap the map where your uncle's home is, choose how far he may wander, then save.</p>
+      <input id="radiusSlider" type="range" min="20" max="500" step="10" value="50" aria-label="Safe radius in meters">
+      <div id="radiusLabel" class="mono">Safe radius: 50 m</div>
+      <button id="saveHomeBtn" type="button" disabled>Save home point</button>
+    </div>
+
+    <div id="skeleton">
+      <div class="sk" id="skHeader"></div>
+      <div class="sk" id="skPill"></div>
+      <div class="sk" id="skMap"></div>
+    </div>
+
+    <div id="errBox">
+      <span id="errText">Couldn't reach the server.</span>
+      <button id="reloadBtn" type="button">Reload</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var SUPABASE_URL = 'https://puzelttayercgovbicfp.supabase.co';
+  var API_KEY = 'sb_publishable_tR9acXa7KIxAfPboJmup-g_a-iEpNWZ';
+  var familyKey = null; // entered by the caregiver — never hardcoded here
+
+  var FETCH_INTERVAL_MS = 15000;
+
+  var map = null;
+  var uncleMarker = null;
+  var trailLine = null;
+  var homeCircle = null;
+  var homeMarker = null;
+  var pickedHome = null;
+  var settingsLoaded = false;
+
+  function headers(extra) {
+    var h = {
+      'apikey': API_KEY,
+      'Authorization': 'Bearer ' + API_KEY,
+      'x-access-key': familyKey || '',
+      'Content-Type': 'application/json'
+    };
+    if (extra) for (var k in extra) h[k] = extra[k];
+    return h;
+  }
+
+  function $(id) { return document.getElementById(id); }
+
+  function showErr(msg) {
+    try {
+      $('errText').textContent = msg;
+      $('errBox').style.display = 'block';
+    } catch (e) { /* ignore */ }
+  }
+  function hideErr() { try { $('errBox').style.display = 'none'; } catch (e) {} }
+
+  /* ---------------- Gate ---------------- */
+
+  function gateCheck(keyToTest) {
+    // Spec test: fetch settings rows with the ENTERED key; error or empty -> key is wrong
+    familyKey = keyToTest;
+    return fetch(SUPABASE_URL + '/rest/v1/settings?select=key&limit=1', { headers: headers() })
+      .then(function (res) {
+        if (!res.ok) throw new Error('bad response');
+        return res.json();
+      })
+      .then(function (rows) {
+        if (!Array.isArray(rows) || rows.length === 0) return false;
+        return true;
+      });
+  }
+
+  function tryUnlock() {
+    var entered = $('gateInput').value.trim();
+    if (!entered) {
+      $('gateError').textContent = 'Please enter your family key first.';
+      $('gateError').style.display = 'block';
+      return;
+    }
+    gateCheck(entered).then(function (ok) {
+      if (ok) {
+        try { localStorage.setItem('ust_key', entered); } catch (e) { /* private mode */ }
+        enterApp();
+      } else {
+        familyKey = null;
+        $('gateError').textContent = "That key doesn't match. Check it and try again.";
+        $('gateError').style.display = 'block';
+      }
+    }).catch(function () {
+      showGateNetworkError();
+    });
+  }
+
+  function showGateNetworkError() {
+    try {
+      $('gateError').textContent = "Couldn't reach the server. Check your connection and try again.";
+      $('gateError').style.display = 'block';
+    } catch (e) { /* ignore */ }
+  }
+
+  var appEntered = false;
+
+  function enterApp() {
+    $('gate').style.display = 'none';
+    $('app').style.display = 'flex';
+    if (appEntered) { refresh(false); return; } // never re-init map or stack timers
+    appEntered = true;
+    initMap();
+    refresh(true);
+    setInterval(function () { refresh(false); }, FETCH_INTERVAL_MS);
+  }
+
+  /* ---------------- Map ---------------- */
+
+  function initMap() {
+    try {
+      map = L.map('map', { zoomControl: true }).setView([20, 0], 3);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+    } catch (e) {
+      showErr('Map failed to load.');
+    }
+  }
+
+  /* ---------------- Settings / setup mode ---------------- */
+
+  function fetchSettings() {
+    return fetch(SUPABASE_URL + '/rest/v1/settings?select=key,value', { headers: headers() })
+      .then(function (res) {
+        if (!res.ok) throw new Error('settings fetch failed');
+        return res.json();
+      });
+  }
+
+  function applySettings(rows) {
+    var s = {};
+    (rows || []).forEach(function (r) { s[r.key] = r.value; });
+    if (s.home_lat == null || s.home_lng == null) {
+      enterSetupMode();
+      return;
+    }
+    var lat = parseFloat(s.home_lat);
+    var lng = parseFloat(s.home_lng);
+    var radius = parseFloat(s.home_radius);
+    if (!isFinite(lat) || !isFinite(lng)) { enterSetupMode(); return; }
+    if (!isFinite(radius) || radius <= 0) radius = 50;
+    var homeSig = lat.toFixed(6) + ',' + lng.toFixed(6) + ',' + Math.round(radius);
+    if (homeSig !== lastHomeSig) {
+      lastHomeSig = homeSig;
+      drawHome(lat, lng, radius); // redraw ONLY when home actually changed — no flicker, no view stealing
+    }
+    settingsLoaded = true;
+    $('setup').style.display = 'none';
+  }
+
+  var lastHomeSig = null;
+
+  function drawHome(lat, lng, radius) {
+    if (!map) return;
+    try {
+      if (homeCircle) { map.removeLayer(homeCircle); homeCircle = null; }
+      if (homeMarker) { map.removeLayer(homeMarker); homeMarker = null; }
+      homeMarker = L.circleMarker([lat, lng], {
+        radius: 6,
+        color: '#10B981',
+        weight: 2,
+        fillColor: '#0B0F17',
+        fillOpacity: 1
+      }).addTo(map);
+      homeCircle = L.circle([lat, lng], {
+        radius: radius,
+        color: '#10B981',
+        weight: 1.5,
+        opacity: 0.55,
+        fillColor: '#10B981',
+        fillOpacity: 0.07
+      }).addTo(map);
+      map.setView([lat, lng], Math.max(map.getZoom(), 15), { animate: true });
+    } catch (e) { /* ignore */ }
+  }
+
+  var setupActive = false;
+
+  function enterSetupMode() {
+    try {
+      $('setup').style.display = 'block';
+      $('saveHomeBtn').disabled = !pickedHome;
+      if (map && !setupActive) {
+        setupActive = true; // idempotent: don't re-center or re-bind every poll
+        map.setView([51.5, 0], 12);
+        map.on('click', function (e) {
+          pickedHome = { lat: e.latlng.lat, lng: e.latlng.lng };
+          $('saveHomeBtn').disabled = false;
+          drawPicked();
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function drawPicked() {
+    if (!map || !pickedHome) return;
+    try {
+      if (homeMarker) map.removeLayer(homeMarker);
+      homeMarker = L.circleMarker([pickedHome.lat, pickedHome.lng], {
+        radius: 6,
+        color: '#10B981',
+        weight: 2,
+        fillColor: '#10B981',
+        fillOpacity: 1
+      }).addTo(map);
+    } catch (e) { /* ignore */ }
+  }
+
+  function saveHome() {
+    if (!pickedHome) return;
+    var btn = $('saveHomeBtn');
+    btn.disabled = true;
+    var radius = parseFloat($('radiusSlider').value) || 50;
+    fetch(SUPABASE_URL + '/rest/v1/settings', {
+      method: 'POST',
+      headers: headers({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify([
+        { key: 'home_lat', value: String(pickedHome.lat) },
+        { key: 'home_lng', value: String(pickedHome.lng) },
+        { key: 'home_radius', value: String(radius) }
+      ])
+    }).then(function (res) {
+      if (!res.ok) throw new Error('save failed');
+      drawHome(pickedHome.lat, pickedHome.lng, radius);
+      lastHomeSig = pickedHome.lat.toFixed(6) + ',' + pickedHome.lng.toFixed(6) + ',' + Math.round(radius);
+      setupActive = false;
+      settingsLoaded = true;
+      $('setup').style.display = 'none';
+      map.off('click');
+    }).catch(function () {
+      showErr("Couldn't save the home point. Check your connection and try again.");
+      btn.disabled = false;
+    });
+  }
+
+  /* ---------------- Locations ---------------- */
+
+  function fetchLocations() {
+    return fetch(SUPABASE_URL + '/rest/v1/locations?device=eq.uncle&order=created_at.desc&limit=50', { headers: headers() })
+      .then(function (res) {
+        if (!res.ok) throw new Error('locations fetch failed');
+        return res.json();
+      });
+  }
+
+  function renderLocations(rows) {
+    try {
+      var pill = $('statusPill');
+      var last = $('lastSeen');
+      var banner = $('banner');
+      var tint = $('tint');
+
+      if (!rows || rows.length === 0) {
+        pill.className = 'pill waiting';
+        pill.textContent = 'waiting for first signal';
+        last.className = 'pill waiting mono';
+        last.textContent = 'waiting for first signal';
+        banner.style.display = 'none';
+        tint.classList.remove('on');
+        return;
+      }
+
+      var newest = rows[0];
+      var newestAt = new Date(newest.created_at);
+      var newestMs = newestAt.getTime();
+      if (!isFinite(newestMs)) {
+        last.textContent = 'Last seen: time unavailable';
+        last.className = 'pill mono stale';
+      } else {
+        var ageMin = Math.max(0, Math.round((Date.now() - newestMs) / 60000));
+        var seenLabel = ageMin <= 0 ? 'Last seen just now' :
+          ageMin === 1 ? 'Last seen 1 min ago' : 'Last seen ' + ageMin + ' min ago';
+        last.textContent = seenLabel;
+        last.className = 'pill mono ' + (ageMin > 3 ? 'stale' : 'inside');
+      }
+
+      // GPS drift guard: outside only if the 2 most recent points are both beyond radius
+      var radius = currentRadius();
+      var recent = rows.slice(0, 2);
+      var outside = recent.length === 2 && recent.every(function (r) {
+        return distanceMeters(r.lat, r.lng) > radius;
+      });
+
+      if (outside) {
+        pill.className = 'pill outside';
+        pill.textContent = '🔴 Outside safe zone';
+        banner.innerHTML = '<b>Uncle is outside the safe zone.</b> His last two locations were both beyond the ' + Math.round(radius) + ' m radius.';
+        banner.style.display = 'block';
+        tint.classList.add('on');
+      } else {
+        pill.className = 'pill inside';
+        pill.textContent = '🟢 Inside safe zone';
+        banner.style.display = 'none';
+        tint.classList.remove('on');
+      }
+
+      drawTrail(rows);
+    } catch (e) { /* ignore */ }
+  }
+
+  function currentRadius() {
+    try {
+      if (!homeCircle) return 50;
+      return homeCircle.getRadius();
+    } catch (e) { return 50; }
+  }
+
+  function distanceMeters(lat, lng) {
+    try {
+      if (!homeMarker) return 0;
+      var home = homeMarker.getLatLng();
+      var R = 6371000;
+      var dLat = (lat - home.lat) * Math.PI / 180;
+      var dLng = (lng - home.lng) * Math.PI / 180;
+      var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(home.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      a = Math.min(1, Math.max(0, a)); // clamp floating-point drift
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    } catch (e) { return 0; }
+  }
+
+  function drawTrail(rows) {
+    if (!map) return;
+    try {
+      var pts = [];
+      for (var i = rows.length - 1; i >= 0; i--) {
+        var r = rows[i];
+        if (isFinite(r.lat) && isFinite(r.lng)) pts.push([r.lat, r.lng]);
+      }
+      if (pts.length === 0) return;
+
+      if (trailLine) { map.removeLayer(trailLine); trailLine = null; }
+      trailLine = L.polyline(pts.slice(-20), {
+        color: '#10B981',
+        weight: 2,
+        opacity: 0.35
+      }).addTo(map);
+
+      var newest = pts[pts.length - 1];
+      if (uncleMarker) { map.removeLayer(uncleMarker); uncleMarker = null; }
+      uncleMarker = L.circleMarker(newest, {
+        radius: 9,
+        color: '#10B981',
+        weight: 3,
+        fillColor: '#10B981',
+        fillOpacity: 0.85
+      }).addTo(map);
+
+      // Only follow the uncle if he's roughly in view; first data always centers
+      if (firstFix) {
+        firstFix = false;
+        map.setView(newest, 15);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  var firstFix = true;
+
+  /* ---------------- Refresh loop ---------------- */
+
+  function refresh(first) {
+    if (first) {
+      try { $('skeleton').style.display = 'block'; } catch (e) {}
+    }
+    hideErr();
+    fetchSettings().then(function (rows) {
+      applySettings(rows);
+      return fetchLocations();
+    }).then(function (rows) {
+      try { $('skeleton').style.display = 'none'; } catch (e) {}
+      renderLocations(rows);
+    }).catch(function () {
+      try { $('skeleton').style.display = 'none'; } catch (e) {}
+      showErr("Couldn't reach the server. Check your connection and try again.");
+    });
+  }
+
+  /* ---------------- Wiring ---------------- */
+
+  $('unlockBtn').addEventListener('click', tryUnlock);
+  $('gateInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') tryUnlock();
+  });
+  $('reloadBtn').addEventListener('click', function () {
+    if (settingsLoaded) {
+      refresh(false);
+    } else {
+      hideErr();
+      refresh(true); // safe re-fetch — never re-creates the map or stacks timers
+    }
+  });
+  $('saveHomeBtn').addEventListener('click', saveHome);
+  $('radiusSlider').addEventListener('input', function () {
+    $('radiusLabel').textContent = 'Safe radius: ' + this.value + ' m';
+  });
+
+  // Boot
+  try {
+    var stored = null;
+    try { stored = localStorage.getItem('ust_key'); } catch (e) {}
+    if (stored) {
+      gateCheck(stored).then(function (ok) {
+        if (ok) enterApp(); else { familyKey = null; $('gateError').textContent = "That key doesn't match. Check it and try again."; $('gateError').style.display = 'block'; }
+      }).catch(function () {
+        showGateNetworkError();
+      });
+    } else {
+      $('gateError').style.display = 'none';
+    }
+  } catch (e) { /* never crash */ }
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    try { navigator.serviceWorker.register('sw.js'); } catch (e) { /* never crash */ }
+  });
+}
+</script>
+</body>
+</html>

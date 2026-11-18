@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Family safety page</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    background:#111827;
+    color:#E5E7EB;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:24px;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  .card { max-width:340px; width:100%; }
+  .shield { width:56px; height:56px; margin:0 auto 20px; display:block; }
+  h1 { font-size:19px; font-weight:600; letter-spacing:-0.01em; color:#F9FAFB; }
+  .sub { margin-top:10px; font-size:15px; line-height:1.5; color:#9CA3AF; }
+  .last {
+    margin-top:28px;
+    font-size:13px;
+    color:#6B7280;
+    font-variant-numeric:tabular-nums;
+  }
+  .last .dot {
+    display:inline-block;
+    width:7px; height:7px;
+    border-radius:50%;
+    background:#10B981;
+    margin-right:7px;
+    vertical-align:1px;
+  }
+  .denied { display:none; }
+  .denied p { font-size:15px; line-height:1.5; color:#D1D5DB; margin-bottom:18px; }
+  .retry {
+    display:inline-block;
+    min-height:48px;
+    min-width:120px;
+    padding:12px 28px;
+    font-size:16px;
+    border:none;
+    border-radius:10px;
+    background:#1F2937;
+    color:#F9FAFB;
+    cursor:pointer;
+    transition:transform .08s ease;
+  }
+  .retry:active { transform:scale(0.96); background:#374151; }
+</style>
+</head>
+<body>
+  <div class="card" id="normalView">
+    <svg class="shield" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 3l7 3v5c0 4.5-3 8.4-7 9.6C8 19.4 5 15.5 5 11V6l7-3z"/>
+      <path d="M9.5 12l1.8 1.8 3.4-3.6"/>
+    </svg>
+    <h1>Family safety page active</h1>
+    <p class="sub">You can put the phone away now — this page keeps working</p>
+    <p class="last"><span class="dot"></span><span id="lastText">last reported: waiting…</span></p>
+  </div>
+
+  <div class="card denied" id="deniedView">
+    <p>Please allow location access so your family can find you</p>
+    <button class="retry" id="retryBtn" type="button">Retry</button>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SUPABASE_URL = 'https://puzelttayercgovbicfp.supabase.co';
+  var API_KEY = 'sb_publishable_tR9acXa7KIxAfPboJmup-g_a-iEpNWZ';
+  var ACCESS_KEY = 'ec9d4614e93ef7aaa0f3d4ac47f0ecc0';
+
+  var POST_INTERVAL_MS = 20000;
+  var lastFix = null;
+  var lastPostOkAt = 0;
+  var posting = false;
+
+  function headers() {
+    return {
+      'Content-Type': 'application/json',
+      'apikey': API_KEY,
+      'Authorization': 'Bearer ' + API_KEY,
+      'x-access-key': ACCESS_KEY,
+      'Prefer': 'return=minimal'
+    };
+  }
+
+  function updateLastLine() {
+    var el = document.getElementById('lastText');
+    if (!el) return;
+    try {
+      if (!lastPostOkAt) { el.textContent = 'last reported: waiting…'; return; }
+      var secs = Math.round((Date.now() - lastPostOkAt) / 1000);
+      var label;
+      if (secs < 10) label = 'just now';
+      else if (secs < 60) label = secs + ' seconds ago';
+      else {
+        var mins = Math.round(secs / 60);
+        label = mins === 1 ? '1 minute ago' : mins + ' minutes ago';
+      }
+      el.textContent = 'last reported: ' + label;
+    } catch (e) { /* never crash on UI */ }
+  }
+
+  function postLocation() {
+    if (posting || !lastFix) return;
+    posting = true;
+    var body = JSON.stringify([{
+      device: 'uncle',
+      lat: lastFix.lat,
+      lng: lastFix.lng,
+      accuracy: lastFix.accuracy
+    }]);
+    fetch(SUPABASE_URL + '/rest/v1/locations', {
+      method: 'POST',
+      headers: headers(),
+      body: body
+    }).then(function (res) {
+      if (res && res.ok) lastPostOkAt = Date.now();
+    }).catch(function () {
+      /* network failure: stay silent, next tick retries */
+    }).then(function () {
+      posting = false;
+    });
+  }
+
+  function showDenied() {
+    try {
+      document.getElementById('normalView').style.display = 'none';
+      document.getElementById('deniedView').style.display = 'block';
+    } catch (e) { /* ignore */ }
+  }
+
+  function showNormal() {
+    try {
+      document.getElementById('deniedView').style.display = 'none';
+      document.getElementById('normalView').style.display = 'flex';
+    } catch (e) { /* ignore */ }
+  }
+
+  var watchId = null;
+
+  function startWatching() {
+    showNormal();
+    if (!navigator.geolocation) { showDenied(); return; }
+    try {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId); // never stack duplicate watchers on Retry
+        watchId = null;
+      }
+      watchId = navigator.geolocation.watchPosition(function (pos) {
+        try {
+          var c = pos.coords;
+          lastFix = {
+            lat: c.latitude,
+            lng: c.longitude,
+            accuracy: (typeof c.accuracy === 'number') ? c.accuracy : 0
+          };
+          showNormal(); // a working fix always restores the calm screen
+          // immediate on first fix, then only when the 20s interval has elapsed
+          if (!lastPostOkAt || Date.now() - lastPostOkAt >= POST_INTERVAL_MS) postLocation();
+        } catch (e) { /* ignore */ }
+      }, function (err) {
+        // Only a real permission refusal shows the "allow location" screen.
+        // GPS timeouts / temporary signal loss must NOT scare the user.
+        if (err && err.code === 1) {
+          showDenied();
+        }
+        // Other errors: stay calm, keep "waiting…" until the next fix lands.
+      }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 15000 });
+    } catch (e) {
+      showDenied();
+    }
+  }
+
+  // Periodic 20s sender
+  setInterval(function () {
+    try {
+      if (Date.now() - lastPostOkAt >= POST_INTERVAL_MS) postLocation();
+    } catch (e) { /* ignore */ }
+  }, POST_INTERVAL_MS);
+
+  // Keep the "last reported" line fresh
+  setInterval(updateLastLine, 5000);
+
+  document.getElementById('retryBtn').addEventListener('click', function () {
+    startWatching();
+  });
+
+  updateLastLine();
+  startWatching();
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    try { navigator.serviceWorker.register('sw.js'); } catch (e) { /* never crash */ }
+  });
+}
+</script>
+</body>
+</html>

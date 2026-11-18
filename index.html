@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0F17">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>Uncle Safe</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    background:#0B0F17;
+    color:#E5E7EB;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:24px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  img.logo { width:96px; height:96px; margin-bottom:20px; }
+  h1 { font-size:22px; font-weight:600; letter-spacing:-0.02em; color:#F9FAFB; }
+  .sub { margin-top:8px; font-size:14px; color:#9CA3AF; }
+  .btns { margin-top:32px; width:100%; max-width:320px; display:flex; flex-direction:column; gap:14px; }
+  a.btn {
+    display:flex; align-items:center; justify-content:center;
+    min-height:56px; border-radius:14px;
+    font-size:16px; font-weight:600; text-decoration:none;
+    transition:transform .12s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  a.btn:active { transform:scale(0.97); }
+  a.care { background:#10B981; color:#04110B; }
+  a.uncle { background:#111827; color:#F9FAFB; border:1px solid rgba(255,255,255,0.08); }
+  .hint { margin-top:28px; font-size:12px; color:#6B7280; }
+</style>
+</head>
+<body>
+  <img class="logo" src="icon-192.png" alt="Uncle Safe logo">
+  <h1>Uncle Safe</h1>
+  <p class="sub">Quiet family safety tracker</p>
+  <div class="btns">
+    <a class="btn care" href="watch.html">Open my map (caregiver)</a>
+    <a class="btn uncle" href="tracker.html">Set up this phone (uncle)</a>
+  </div>
+  <p class="hint">Tip: install this as an app from your browser menu → "Add to Home screen"</p>
+</body>
+</html>
